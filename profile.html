@@ -1,0 +1,178 @@
+<script>
+  let currentUserId = null;
+  let inviteCode = null;
+
+  const el = (id) => document.getElementById(id);
+
+  const avatarEl      = el('avatar');
+  const profileName   = el('profileName');
+  const profileEmail  = el('profileEmail');
+  const ibanInput     = el('ibanInput');
+  const saveIbanBtn   = el('saveIbanBtn');
+  const ibanBanner    = el('ibanBanner');
+  const hhName        = el('hhName');
+  const hhMembers     = el('hhMembers');
+  const hhJoined      = el('hhJoined');
+  const copyInviteBtn = el('copyInviteBtn');
+  const copyBtnLabel  = el('copyBtnLabel');
+  const inviteBanner  = el('inviteBanner');
+  const signOutBtn    = el('signOutBtn');
+
+  function showBanner(el, type, msg) {
+    el.textContent = msg;
+    el.className = `inline-banner ${type}`;
+    setTimeout(() => el.className = 'inline-banner', 3000);
+  }
+
+  function formatDate(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleDateString('en-SA', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  }
+
+  function formatIBAN(value) {
+    const raw = value.replace(/\s+/g, '').toUpperCase();
+    return raw.match(/.{1,4}/g)?.join(' ') ?? raw;
+  }
+
+  function isValidIBAN(iban) {
+    return iban.length >= 15 && iban.length <= 34;
+  }
+
+  // Format IBAN live
+  ibanInput.addEventListener('input', () => {
+    ibanInput.value = formatIBAN(ibanInput.value);
+  });
+
+  // Save IBAN
+  saveIbanBtn.addEventListener('click', async () => {
+    const iban = ibanInput.value.replace(/\s+/g, '');
+
+    if (!isValidIBAN(iban)) {
+      showBanner(ibanBanner, 'error', 'Invalid IBAN.');
+      return;
+    }
+
+    try {
+      saveIbanBtn.disabled = true;
+      saveIbanBtn.textContent = 'Saving…';
+
+      const { error } = await sb
+        .from('users')
+        .update({ iban })
+        .eq('id', currentUserId);
+
+      if (error) throw error;
+
+      showBanner(ibanBanner, 'success', 'IBAN saved successfully.');
+
+    } catch (err) {
+      showBanner(ibanBanner, 'error', err.message || 'Error saving IBAN.');
+    } finally {
+      saveIbanBtn.disabled = false;
+      saveIbanBtn.textContent = 'Save IBAN';
+    }
+  });
+
+  // Copy invite
+  copyInviteBtn.addEventListener('click', async () => {
+    if (!inviteCode) {
+      showBanner(inviteBanner, 'error', 'No invite code found.');
+      return;
+    }
+
+    const url = `${window.location.origin}/household-join.html?code=${inviteCode}`;
+
+    try {
+      await navigator.clipboard.writeText(url);
+      copyBtnLabel.textContent = 'Copied!';
+      setTimeout(() => copyBtnLabel.textContent = 'Copy invite code', 2000);
+    } catch {
+      showBanner(inviteBanner, 'error', `Code: ${inviteCode}`);
+    }
+  });
+
+  // Sign out
+  signOutBtn.addEventListener('click', async () => {
+    const confirmLogout = confirm('Are you sure you want to sign out?');
+    if (!confirmLogout) return;
+
+    await sb.auth.signOut();
+    window.location.href = 'index.html';
+  });
+
+  async function loadProfile() {
+    try {
+      const { data: { session }, error: sessionError } = await sb.auth.getSession();
+      if (sessionError || !session) {
+        window.location.href = 'signin.html';
+        return;
+      }
+
+      currentUserId = session.user.id;
+
+      const { data: profile, error } = await sb
+        .from('users')
+        .select('full_name, email, iban, household_id, created_at')
+        .eq('id', currentUserId)
+        .single();
+
+      if (error || !profile) {
+        console.error(error);
+        window.location.href = 'signin.html';
+        return;
+      }
+
+      // Profile info
+      const name = profile.full_name || '—';
+      const firstLetter = name.trim()?.[0]?.toUpperCase() || '?';
+
+      avatarEl.textContent = firstLetter;
+      profileName.textContent = name;
+      profileEmail.textContent = profile.email || session.user.email || '—';
+
+      if (profile.iban) {
+        ibanInput.value = formatIBAN(profile.iban);
+      }
+
+      // Household
+      if (profile.household_id) {
+        const { data: household } = await sb
+          .from('households')
+          .select('name, invite_code')
+          .eq('id', profile.household_id)
+          .single();
+
+        if (household) {
+          inviteCode = household.invite_code;
+          hhName.textContent = household.name || '—';
+        }
+
+        const { count } = await sb
+          .from('users')
+          .select('id', { count: 'exact', head: true })
+          .eq('household_id', profile.household_id);
+
+        hhMembers.textContent = count
+          ? `${count} ${count === 1 ? 'person' : 'people'}`
+          : '—';
+
+        hhJoined.textContent = formatDate(profile.created_at);
+
+      } else {
+        hhName.textContent = 'No household yet';
+        hhMembers.textContent = '—';
+        hhJoined.textContent = '—';
+      }
+
+    } catch (err) {
+      console.error(err);
+      window.location.href = 'signin.html';
+    }
+  }
+
+  loadProfile();
+</script>
