@@ -1,22 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mizan — Profile</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+
+  <style>
+    body { background: var(--color-bg); }
+    .page-header {
+      background: var(--color-surface);
+      border-bottom: 1px solid var(--color-border);
+      height: 81px;
+      display: flex;
+      align-items: center;
+      padding: 0 235.5px;
+    }
+    .page-header__title {
+      font-family: var(--font-display);
+      font-weight: 500;
+      font-size: 24px;
+      color: var(--color-text-heading);
+    }
+    .page-content {
+      max-width: 672px;
+      margin: 0 auto;
+      padding: 32px 24px 100px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+    .profile-card {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-card);
+      box-shadow: var(--shadow-sm);
+      padding: 25px;
+    }
+    .identity-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .profile-avatar {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: var(--color-primary);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
+    .identity-name {
+      font-family: var(--font-display);
+      font-size: 20px;
+      color: var(--color-text-heading);
+    }
+    .identity-email {
+      font-size: 14px;
+      color: var(--color-text-muted);
+    }
+
+    .inline-banner {
+      font-size: 13px;
+      padding: 6px 10px;
+      border-radius: var(--radius-sm);
+      display: none;
+      margin-top: 8px;
+    }
+    .inline-banner.error   { display: block; background: var(--color-error-bg); }
+    .inline-banner.success { display: block; background: var(--color-success-bg); }
+  </style>
+</head>
+
+<body>
+
+<header class="page-header">
+  <h1 class="page-header__title">Profile</h1>
+</header>
+
+<main class="page-content">
+
+  <div class="profile-card">
+    <div class="identity-row">
+      <div id="avatar" class="profile-avatar">?</div>
+      <div>
+        <div id="profileName" class="identity-name">Loading…</div>
+        <div id="profileEmail" class="identity-email"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="profile-card">
+    <div>Your IBAN</div>
+
+    <input id="ibanInput" type="text" />
+    <button id="saveIbanBtn">Save IBAN</button>
+    <div id="ibanBanner" class="inline-banner"></div>
+  </div>
+
+  <button id="signOutBtn">Sign out</button>
+
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase.js"></script>
+
 <script>
   let currentUserId = null;
-  let inviteCode = null;
 
-  const el = (id) => document.getElementById(id);
-
-  const avatarEl      = el('avatar');
-  const profileName   = el('profileName');
-  const profileEmail  = el('profileEmail');
-  const ibanInput     = el('ibanInput');
-  const saveIbanBtn   = el('saveIbanBtn');
-  const ibanBanner    = el('ibanBanner');
-  const hhName        = el('hhName');
-  const hhMembers     = el('hhMembers');
-  const hhJoined      = el('hhJoined');
-  const copyInviteBtn = el('copyInviteBtn');
-  const copyBtnLabel  = el('copyBtnLabel');
-  const inviteBanner  = el('inviteBanner');
-  const signOutBtn    = el('signOutBtn');
+  const avatarEl = document.getElementById('avatar');
+  const profileName = document.getElementById('profileName');
+  const profileEmail = document.getElementById('profileEmail');
+  const ibanInput = document.getElementById('ibanInput');
+  const saveIbanBtn = document.getElementById('saveIbanBtn');
+  const ibanBanner = document.getElementById('ibanBanner');
+  const signOutBtn = document.getElementById('signOutBtn');
 
   function showBanner(el, type, msg) {
     el.textContent = msg;
@@ -24,155 +129,67 @@
     setTimeout(() => el.className = 'inline-banner', 3000);
   }
 
-  function formatDate(iso) {
-    if (!iso) return '—';
-    return new Date(iso).toLocaleDateString('en-SA', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
-  }
-
-  function formatIBAN(value) {
-    const raw = value.replace(/\s+/g, '').toUpperCase();
-    return raw.match(/.{1,4}/g)?.join(' ') ?? raw;
-  }
-
-  function isValidIBAN(iban) {
-    return iban.length >= 15 && iban.length <= 34;
-  }
-
-  // Format IBAN live
-  ibanInput.addEventListener('input', () => {
-    ibanInput.value = formatIBAN(ibanInput.value);
-  });
-
-  // Save IBAN
   saveIbanBtn.addEventListener('click', async () => {
     const iban = ibanInput.value.replace(/\s+/g, '');
 
-    if (!isValidIBAN(iban)) {
-      showBanner(ibanBanner, 'error', 'Invalid IBAN.');
+    
+    if (!iban || iban.length < 15) {
+      showBanner(ibanBanner, 'error', 'Please enter a valid IBAN.');
       return;
     }
 
-    try {
-      saveIbanBtn.disabled = true;
-      saveIbanBtn.textContent = 'Saving…';
+    const { error } = await sb
+      .from('users')
+      .update({ iban })
+      .eq('id', currentUserId);
 
-      const { error } = await sb
-        .from('users')
-        .update({ iban })
-        .eq('id', currentUserId);
-
-      if (error) throw error;
-
-      showBanner(ibanBanner, 'success', 'IBAN saved successfully.');
-
-    } catch (err) {
-      showBanner(ibanBanner, 'error', err.message || 'Error saving IBAN.');
-    } finally {
-      saveIbanBtn.disabled = false;
-      saveIbanBtn.textContent = 'Save IBAN';
+    if (error) {
+      showBanner(ibanBanner, 'error', error.message);
+    } else {
+      showBanner(ibanBanner, 'success', 'Saved!');
     }
   });
 
-  // Copy invite
-  copyInviteBtn.addEventListener('click', async () => {
-    if (!inviteCode) {
-      showBanner(inviteBanner, 'error', 'No invite code found.');
-      return;
-    }
-
-    const url = `${window.location.origin}/household-join.html?code=${inviteCode}`;
-
-    try {
-      await navigator.clipboard.writeText(url);
-      copyBtnLabel.textContent = 'Copied!';
-      setTimeout(() => copyBtnLabel.textContent = 'Copy invite code', 2000);
-    } catch {
-      showBanner(inviteBanner, 'error', `Code: ${inviteCode}`);
-    }
-  });
-
-  // Sign out
   signOutBtn.addEventListener('click', async () => {
-    const confirmLogout = confirm('Are you sure you want to sign out?');
-    if (!confirmLogout) return;
-
     await sb.auth.signOut();
     window.location.href = 'index.html';
   });
 
-  async function loadProfile() {
-    try {
-      const { data: { session }, error: sessionError } = await sb.auth.getSession();
-      if (sessionError || !session) {
-        window.location.href = 'signin.html';
-        return;
-      }
+  (async () => {
+    const { data: { session } } = await sb.auth.getSession();
 
-      currentUserId = session.user.id;
-
-      const { data: profile, error } = await sb
-        .from('users')
-        .select('full_name, email, iban, household_id, created_at')
-        .eq('id', currentUserId)
-        .single();
-
-      if (error || !profile) {
-        console.error(error);
-        window.location.href = 'signin.html';
-        return;
-      }
-
-      // Profile info
-      const name = profile.full_name || '—';
-      const firstLetter = name.trim()?.[0]?.toUpperCase() || '?';
-
-      avatarEl.textContent = firstLetter;
-      profileName.textContent = name;
-      profileEmail.textContent = profile.email || session.user.email || '—';
-
-      if (profile.iban) {
-        ibanInput.value = formatIBAN(profile.iban);
-      }
-
-      // Household
-      if (profile.household_id) {
-        const { data: household } = await sb
-          .from('households')
-          .select('name, invite_code')
-          .eq('id', profile.household_id)
-          .single();
-
-        if (household) {
-          inviteCode = household.invite_code;
-          hhName.textContent = household.name || '—';
-        }
-
-        const { count } = await sb
-          .from('users')
-          .select('id', { count: 'exact', head: true })
-          .eq('household_id', profile.household_id);
-
-        hhMembers.textContent = count
-          ? `${count} ${count === 1 ? 'person' : 'people'}`
-          : '—';
-
-        hhJoined.textContent = formatDate(profile.created_at);
-
-      } else {
-        hhName.textContent = 'No household yet';
-        hhMembers.textContent = '—';
-        hhJoined.textContent = '—';
-      }
-
-    } catch (err) {
-      console.error(err);
+    if (!session) {
       window.location.href = 'signin.html';
+      return;
     }
-  }
 
-  loadProfile();
+    currentUserId = session.user.id;
+
+    
+    const { data: profile, error } = await sb
+      .from('users')
+      .select('full_name, email, iban')
+      .eq('id', currentUserId)
+      .single();
+
+    if (error || !profile) {
+      console.error(error);
+      window.location.href = 'signin.html';
+      return;
+    }
+
+  
+    const firstName = profile.full_name?.split(' ')[0] || '';
+    avatarEl.textContent = firstName ? firstName[0].toUpperCase() : '?';
+
+    profileName.textContent = profile.full_name || '—';
+    profileEmail.textContent = profile.email || session.user.email || '—';
+
+    if (profile.iban) {
+      ibanInput.value = profile.iban;
+    }
+  })();
 </script>
+
+</body>
+</html>
